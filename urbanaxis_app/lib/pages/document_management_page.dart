@@ -1,43 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
+import '../api_service.dart';
+
 class DocumentManagementPage extends StatelessWidget {
   const DocumentManagementPage({super.key});
-
-  final List<Map<String, dynamic>> _documents = const [
-    {
-      'name': 'Building Rules & Reg...',
-      'category': 'POLICY',
-      'date': 'Updated Jul 14',
-      'size': '2.4 MB',
-      'icon': Icons.description,
-      'color': Colors.red,
-    },
-    {
-      'name': 'Fire Safety & Emer...',
-      'category': 'SAFETY',
-      'date': 'Updated Oct 04',
-      'size': '1.1 MB',
-      'icon': Icons.local_fire_department,
-      'color': Colors.orange,
-    },
-    {
-      'name': 'Annual General M...',
-      'category': 'MINUTES',
-      'date': 'Updated Sep 12',
-      'size': '3.2 MB',
-      'icon': Icons.people,
-      'color': Colors.blue,
-    },
-    {
-      'name': 'Sustainability Initi...',
-      'category': 'REGULATION',
-      'date': 'Updated Aug 12',
-      'size': '800 KB',
-      'icon': Icons.eco,
-      'color': Colors.green,
-    },
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -45,63 +12,128 @@ class DocumentManagementPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Official Documents', style: TextStyle(fontSize: 18)),
       ),
-      body: Column(
-        children: [
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _fetchDocuments(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final List<Map<String, dynamic>> documents = snapshot.data!;
+          return Column(
+            children: [
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Manage community guidelines and safety protocols',
-                        style: TextStyle(color: AppTheme.textSecondaryColor),
-                      ),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Manage community guidelines and safety protocols',
+                            style: TextStyle(color: AppTheme.textSecondaryColor),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () {},
+                          icon: const Icon(Icons.upload_file, size: 18),
+                          label: const Text('Upload PDF'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                        ),
+                      ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.upload_file, size: 18),
-                      label: const Text('Upload PDF'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    const SizedBox(height: 16),
+                    const SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _TabBtn(title: 'All Files', isSelected: true),
+                          SizedBox(width: 8),
+                          _TabBtn(title: 'Safety', isSelected: false),
+                          SizedBox(width: 8),
+                          _TabBtn(title: 'Notices', isSelected: false),
+                          SizedBox(width: 8),
+                          _TabBtn(title: 'Regulations', isSelected: false),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                const SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _TabBtn(title: 'All Files', isSelected: true),
-                      SizedBox(width: 8),
-                      _TabBtn(title: 'Safety', isSelected: false),
-                      SizedBox(width: 8),
-                      _TabBtn(title: 'Notices', isSelected: false),
-                      SizedBox(width: 8),
-                      _TabBtn(title: 'Regulations', isSelected: false),
-                    ],
-                  ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: documents.length,
+                  itemBuilder: (context, index) {
+                    return _buildDocCard(documents[index]);
+                  },
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _documents.length,
-              itemBuilder: (context, index) {
-                return _buildDocCard(_documents[index]);
-              },
-            ),
-          ),
-          _buildUploadSection(),
-        ],
+              ),
+              _buildUploadSection(),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchDocuments() async {
+    final data = await ApiService.getData('/api/v1/superadmin/documents');
+    final documents = List<Map<String, dynamic>>.from(data['documents'] ?? []);
+    return documents.map((d) {
+      final category = (d['category'] ?? 'DOCUMENT').toString().toUpperCase();
+      return {
+        'name': d['title'] ?? 'Document',
+        'category': category,
+        'date': _formatTime(d['createdAt']),
+        'size': '-',
+        'icon': _categoryIcon(category),
+        'color': _categoryColor(category),
+      };
+    }).toList();
+  }
+
+  String _formatTime(dynamic createdAt) {
+    final dt = _parseTimestamp(createdAt);
+    if (dt == null) return 'Updated -';
+    return 'Updated ${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  DateTime? _parseTimestamp(dynamic ts) {
+    if (ts == null) return null;
+    if (ts is String) {
+      return DateTime.tryParse(ts);
+    }
+    if (ts is Map) {
+      final seconds = ts['_seconds'] ?? ts['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
+      }
+    }
+    return null;
+  }
+
+  IconData _categoryIcon(String category) {
+    if (category.contains('SAFETY')) return Icons.local_fire_department;
+    if (category.contains('NOTICE')) return Icons.campaign;
+    if (category.contains('REGULATION')) return Icons.gavel;
+    if (category.contains('POLICY')) return Icons.description;
+    return Icons.description;
+  }
+
+  Color _categoryColor(String category) {
+    if (category.contains('SAFETY')) return Colors.orange;
+    if (category.contains('NOTICE')) return Colors.blue;
+    if (category.contains('REGULATION')) return Colors.green;
+    if (category.contains('POLICY')) return Colors.red;
+    return AppTheme.primaryColor;
   }
 
   Widget _buildDocCard(Map<String, dynamic> doc) {

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'theme/app_theme.dart';
-import 'pages/super_admin_dashboard.dart';
+import 'pages/login_page.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const UrbanAxisApp());
 }
 
@@ -33,7 +39,7 @@ class _UrbanAxisAppState extends State<UrbanAxisApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _themeMode,
-      home: const SuperAdminDashboard(),
+      home: const LoginPage(),
     );
   }
 }

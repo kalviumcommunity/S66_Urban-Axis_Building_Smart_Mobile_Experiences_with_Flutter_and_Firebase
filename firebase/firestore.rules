@@ -1,0 +1,250 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────
+    //  Helper functions
+    // ─────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getRole() {
+      return getUserData().role;
+    }
+
+    function getCommunityId() {
+      return getUserData().communityId;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && getRole() == 'superadmin';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getRole() == 'admin';
+    }
+
+    function isResident() {
+      return isAuthenticated() && getRole() == 'resident';
+    }
+
+    function isStaff() {
+      return isAuthenticated() && getRole() in ['superadmin', 'admin'];
+    }
+
+    function sameCommunity(docCommunityId) {
+      return getCommunityId() == docCommunityId;
+    }
+
+    function isActiveUser() {
+      return getUserData().status == 'active';
+    }
+
+    // ─────────────────────────────────────────────
+    //  communities
+    // ─────────────────────────────────────────────
+    match /communities/{communityId} {
+      // SuperAdmin of that community can read/write
+      allow read: if isAuthenticated() && sameCommunity(communityId) && isActiveUser();
+      allow write: if isSuperAdmin() && sameCommunity(communityId) && isActiveUser();
+    }
+
+    // ─────────────────────────────────────────────
+    //  users
+    // ─────────────────────────────────────────────
+    match /users/{userId} {
+      // User can read their own doc; staff in same community can read any user
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && (
+          request.auth.uid == userId
+          || (isStaff() && sameCommunity(resource.data.communityId))
+        );
+
+      // Only self-updates for residents (limited fields); SuperAdmin controls all
+      allow update: if isAuthenticated()
+        && isActiveUser()
+        && (
+          (request.auth.uid == userId
+            && onlyUpdating(['profilePhotoUrl', 'emergencyContact', 'updatedAt']))
+          || (isSuperAdmin() && sameCommunity(resource.data.communityId))
+          || (isAdmin() && sameCommunity(resource.data.communityId)
+              && resource.data.role == 'resident')
+        );
+
+      // Only Cloud Functions (backend) can create users – enforced via Admin SDK bypass
+      allow create: if false;
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  services
+    // ─────────────────────────────────────────────
+    match /services/{serviceId} {
+      // Residents in same community can read visible services
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId)
+        && (isStaff() || resource.data.visibilitySettings.isVisible == true);
+
+      // SuperAdmin can write; Admin can update only their assigned service fields
+      allow create: if isSuperAdmin() && sameCommunity(request.resource.data.communityId);
+      allow update: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId)
+        && (
+          isSuperAdmin()
+          || (isAdmin() && resource.data.assignedAdminIds.hasAny([request.auth.uid])
+              && onlyUpdating(['status', 'currentOccupancy', 'operatingHours',
+                               'operatingDays', 'updatedAt']))
+        );
+      allow delete: if false; // No hard deletes
+    }
+
+    // ─────────────────────────────────────────────
+    //  serviceNotices
+    // ─────────────────────────────────────────────
+    match /serviceNotices/{noticeId} {
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      allow create: if isStaff()
+        && isActiveUser()
+        && sameCommunity(request.resource.data.communityId);
+
+      allow update: if isStaff()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      allow delete: if isSuperAdmin() && sameCommunity(resource.data.communityId);
+    }
+
+    // ─────────────────────────────────────────────
+    //  serviceLogs — written primarily by Cloud Functions
+    // ─────────────────────────────────────────────
+    match /serviceLogs/{logId} {
+      allow read: if isStaff()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      // Residents create their own logs (check-in / check-out)
+      allow create: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(request.resource.data.communityId)
+        && request.resource.data.residentId == request.auth.uid;
+
+      allow update: if false; // Immutable
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  occupancySnapshots — written only by scheduled functions
+    // ─────────────────────────────────────────────
+    match /occupancySnapshots/{snapshotId} {
+      allow read: if isStaff()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ─────────────────────────────────────────────
+    //  complaints
+    // ─────────────────────────────────────────────
+    match /complaints/{complaintId} {
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId)
+        && (
+          isStaff()
+          || resource.data.residentId == request.auth.uid
+        );
+
+      allow create: if isResident()
+        && isActiveUser()
+        && sameCommunity(request.resource.data.communityId)
+        && request.resource.data.residentId == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId)
+        && (
+          isStaff()
+          || resource.data.residentId == request.auth.uid
+        );
+
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  notifications
+    // ─────────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      allow create: if isSuperAdmin()
+        && isActiveUser()
+        && sameCommunity(request.resource.data.communityId);
+
+      // Residents can update readBy field only
+      allow update: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId)
+        && (isSuperAdmin() || onlyUpdating(['readBy']));
+
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  documents
+    // ─────────────────────────────────────────────
+    match /documents/{docId} {
+      allow read: if isAuthenticated()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      allow create: if isSuperAdmin()
+        && isActiveUser()
+        && sameCommunity(request.resource.data.communityId);
+
+      allow delete: if isSuperAdmin()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+
+      allow update: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  auditLogs — immutable, Cloud Functions write
+    // ─────────────────────────────────────────────
+    match /auditLogs/{logId} {
+      allow read: if isSuperAdmin()
+        && isActiveUser()
+        && sameCommunity(resource.data.communityId);
+      allow write: if false; // Only Firebase Admin SDK (Cloud Functions)
+    }
+
+    // ─────────────────────────────────────────────
+    //  serviceLogsArchive
+    // ─────────────────────────────────────────────
+    match /serviceLogsArchive/{logId} {
+      allow read: if isSuperAdmin() && isActiveUser();
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────
+    //  Helper: check only specific fields are updated
+    // ─────────────────────────────────────────────
+    function onlyUpdating(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+  }
+}

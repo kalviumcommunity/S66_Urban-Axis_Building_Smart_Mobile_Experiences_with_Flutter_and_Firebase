@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../api_service.dart';
 import 'community_control_page.dart';
 import 'resident_management_page.dart';
 import 'service_management_page.dart';
@@ -19,6 +20,18 @@ class SuperAdminDashboard extends StatefulWidget {
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   int _currentIndex = 0;
+  Future<Map<String, dynamic>>? _dashboardFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dashboardFuture = _fetchDashboardData();
+  }
+
+  Future<Map<String, dynamic>> _fetchDashboardData() async {
+    final data = await ApiService.getData('/api/v1/superadmin/dashboard');
+    return Map<String, dynamic>.from(data ?? {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,11 +85,23 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         return const SettingsPage();
       case 0:
       default:
-        return _buildDashboardContent();
+        return FutureBuilder<Map<String, dynamic>>(
+          future: _dashboardFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            } else if (!snapshot.hasData) {
+              return const Center(child: Text('No data'));
+            }
+            return _buildDashboardContent(snapshot.data!);
+          },
+        );
     }
   }
 
-  Widget _buildDashboardContent() {
+  Widget _buildDashboardContent(Map<String, dynamic> dashboardData) {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
       padding: const EdgeInsets.all(16.0),
@@ -88,7 +113,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimaryColor),
           ),
           const SizedBox(height: 16),
-          _buildOverviewCards(),
+          _buildOverviewCards(dashboardData),
           const SizedBox(height: 24),
           const Text(
             'Management Modules',
@@ -113,13 +138,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
   }
 
-  Widget _buildOverviewCards() {
+  Widget _buildOverviewCards(Map<String, dynamic> dashboardData) {
     return Row(
       children: [
         Expanded(
           child: _StatCard(
             title: 'Total Residents',
-            value: '2,540',
+            value: dashboardData['totalResidents']?.toString() ?? '-',
             icon: Icons.people_alt,
             color: Colors.green,
           ),
@@ -128,7 +153,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         Expanded(
           child: _StatCard(
             title: 'Active Residents',
-            value: '1,820',
+            value: dashboardData['activeResidents']?.toString() ?? '-',
             icon: Icons.person_pin,
             color: AppTheme.primaryColor,
           ),

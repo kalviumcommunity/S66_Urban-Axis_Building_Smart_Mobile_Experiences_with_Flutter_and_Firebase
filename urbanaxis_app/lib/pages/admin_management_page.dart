@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../api_service.dart';
 
 class AdminManagementPage extends StatefulWidget {
   const AdminManagementPage({super.key});
@@ -9,26 +10,47 @@ class AdminManagementPage extends StatefulWidget {
 }
 
 class _AdminManagementPageState extends State<AdminManagementPage> {
-  final List<Map<String, dynamic>> _admins = [
-    {
-      'name': 'Alex Rivera',
-      'phone': '+1 (555) 010-0456',
-      'services': ['Waste Management', 'Energy Grid'],
-      'status': 'Active',
-    },
-    {
-      'name': 'Sarah Jenkins',
-      'phone': '+1 (555) 010-9932',
-      'services': ['Security Portal', 'Facility Comm.'],
-      'status': 'Active',
-    },
-    {
-      'name': 'Mark Thompson',
-      'phone': '+1 (555) 010-8451',
-      'services': ['Public Transit'],
-      'status': 'Suspended',
-    },
-  ];
+  Future<List<Map<String, dynamic>>>? _adminsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _adminsFuture = _fetchAdmins();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAdmins() async {
+    final adminsData = await ApiService.getData('/api/v1/superadmin/admins');
+    final servicesData = await ApiService.getData('/api/v1/superadmin/services');
+
+    final admins = List<Map<String, dynamic>>.from(adminsData['admins'] ?? []);
+    final services = List<Map<String, dynamic>>.from(servicesData['services'] ?? []);
+    final serviceNamesById = <String, String>{
+      for (final s in services)
+        if (s['id'] != null) s['id'].toString(): (s['name'] ?? 'Service').toString(),
+    };
+
+    return admins.map((a) {
+      final assigned = List<String>.from(a['assignedServiceIds'] ?? []);
+      final serviceNames = assigned.isNotEmpty
+          ? assigned.map((id) => serviceNamesById[id] ?? id).toList()
+          : ['Unassigned'];
+      final status = _formatStatus(a['status']);
+
+      return {
+        'name': a['name'] ?? 'Admin',
+        'phone': a['phone'] ?? '-',
+        'services': serviceNames,
+        'status': status,
+      };
+    }).toList();
+  }
+
+  String _formatStatus(dynamic status) {
+    final raw = (status ?? '').toString().toLowerCase();
+    if (raw == 'active') return 'Active';
+    if (raw == 'inactive' || raw == 'suspended') return 'Suspended';
+    return 'Active';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,63 +58,76 @@ class _AdminManagementPageState extends State<AdminManagementPage> {
       appBar: AppBar(
         title: const Text('Admin Management', style: TextStyle(fontSize: 18)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Manage and monitor your urban service administrators.',
-              style: TextStyle(color: AppTheme.textSecondaryColor),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.person_add),
-                label: const Text('Add Admin'),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _adminsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final List<Map<String, dynamic>> admins = snapshot.data!;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _buildStatBox('Total Admins', '24', '+2 this month')),
-                const SizedBox(width: 16),
-                Expanded(child: _buildStatBox('Active Devices', '12', 'Assigned Roles')),
+                const Text(
+                  'Manage and monitor your urban service administrators.',
+                  style: TextStyle(color: AppTheme.textSecondaryColor),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add Admin'),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(child: _buildStatBox('Total Admins', admins.length.toString(), '+2 this month')),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildStatBox('Active Devices', '12', 'Assigned Roles')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildStatBox('System Uptime', '98%', 'Optimal Status', isWide: true),
+                const SizedBox(height: 24),
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search admins by name, service or status...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: admins.length,
+                  itemBuilder: (context, index) {
+                    return _buildAdminCard(admins[index]);
+                  },
+                ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildStatBox('System Uptime', '98%', 'Optimal Status', isWide: true),
-            const SizedBox(height: 24),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Search admins by name, service or status...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _admins.length,
-              itemBuilder: (context, index) {
-                return _buildAdminCard(_admins[index]);
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

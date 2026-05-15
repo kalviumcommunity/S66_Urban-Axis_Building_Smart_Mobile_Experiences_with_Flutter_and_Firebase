@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../api_service.dart';
 
 class ComplaintManagementPage extends StatefulWidget {
   const ComplaintManagementPage({super.key});
@@ -9,38 +10,68 @@ class ComplaintManagementPage extends StatefulWidget {
 }
 
 class _ComplaintManagementPageState extends State<ComplaintManagementPage> {
-  final List<Map<String, dynamic>> _complaints = [
-    {
-      'id': '#CMP-0120',
-      'title': 'Main Water Leakage - Sector 4',
-      'priority': 'HIGH PRIORITY',
-      'category': 'Plumbing',
-      'service': 'Maintenance Dept.',
-      'status': 'Open',
-      'icon': Icons.water_damage,
-      'color': Colors.red,
-    },
-    {
-      'id': '#CMP-0432',
-      'title': 'Deep Pothole on Lincoln Ave',
-      'priority': 'MEDIUM PRIORITY',
-      'category': 'Road Safety',
-      'service': 'Civil Works',
-      'status': 'Open',
-      'icon': Icons.add_road,
-      'color': Colors.orange,
-    },
-    {
-      'id': '#CMP-8455',
-      'title': 'Flickering Streetlight - Park Lane',
-      'priority': 'LOW PRIORITY',
-      'category': 'Electricity',
-      'service': 'Public Lighting',
-      'status': 'Open',
-      'icon': Icons.lightbulb,
-      'color': Colors.green,
-    },
-  ];
+  Future<List<Map<String, dynamic>>>? _complaintsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _complaintsFuture = _fetchComplaints();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchComplaints() async {
+    final data = await ApiService.getData('/api/v1/superadmin/complaints');
+    final complaints = List<Map<String, dynamic>>.from(data['complaints'] ?? []);
+    return complaints.map((c) {
+      final priority = _formatPriority(c['priority']);
+      final icon = _categoryIcon(c['category']);
+      final color = _priorityColor(priority);
+
+      return {
+        'id': c['id'] ?? '',
+        'title': c['title'] ?? 'Complaint',
+        'priority': priority,
+        'category': c['category'] ?? 'General',
+        'service': c['linkedServiceId'] ?? 'General',
+        'status': _formatStatus(c['status']),
+        'icon': icon,
+        'color': color,
+      };
+    }).toList();
+  }
+
+  String _formatPriority(dynamic priority) {
+    final raw = (priority ?? '').toString().toUpperCase();
+    if (raw == 'CRITICAL') return 'CRITICAL PRIORITY';
+    if (raw == 'HIGH') return 'HIGH PRIORITY';
+    if (raw == 'MEDIUM') return 'MEDIUM PRIORITY';
+    if (raw == 'LOW') return 'LOW PRIORITY';
+    return 'MEDIUM PRIORITY';
+  }
+
+  String _formatStatus(dynamic status) {
+    final raw = (status ?? '').toString().toLowerCase();
+    if (raw == 'open') return 'Open';
+    if (raw == 'in_progress') return 'In Progress';
+    if (raw == 'resolved') return 'Resolved';
+    if (raw == 'rejected') return 'Rejected';
+    return 'Open';
+  }
+
+  IconData _categoryIcon(dynamic category) {
+    final raw = (category ?? '').toString().toLowerCase();
+    if (raw.contains('water') || raw.contains('plumb')) return Icons.water_damage;
+    if (raw.contains('road')) return Icons.add_road;
+    if (raw.contains('electric') || raw.contains('light')) return Icons.lightbulb;
+    if (raw.contains('security')) return Icons.security;
+    return Icons.report_problem;
+  }
+
+  Color _priorityColor(String priority) {
+    if (priority.contains('CRITICAL') || priority.contains('HIGH')) return Colors.red;
+    if (priority.contains('MEDIUM')) return Colors.orange;
+    if (priority.contains('LOW')) return Colors.green;
+    return Colors.grey;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,41 +79,54 @@ class _ComplaintManagementPageState extends State<ComplaintManagementPage> {
       appBar: AppBar(
         title: const Text('Active Complaints', style: TextStyle(fontSize: 18)),
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Review and manage citizen grievances across all sectors.',
-                  style: TextStyle(color: AppTheme.textSecondaryColor),
-                ),
-                SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _complaintsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final List<Map<String, dynamic>> complaints = snapshot.data!;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TabBtn(title: 'Open (24)', isSelected: true),
-                    _TabBtn(title: 'In Progress (8)', isSelected: false),
-                    _TabBtn(title: 'Resolved (120)', isSelected: false),
+                    Text(
+                      'Review and manage citizen grievances across all sectors.',
+                      style: TextStyle(color: AppTheme.textSecondaryColor),
+                    ),
+                    SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _TabBtn(title: 'Open (24)', isSelected: true),
+                        _TabBtn(title: 'In Progress (8)', isSelected: false),
+                        _TabBtn(title: 'Resolved (120)', isSelected: false),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _complaints.length,
-              itemBuilder: (context, index) {
-                return _buildComplaintCard(_complaints[index]);
-              },
-            ),
-          ),
-        ],
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: complaints.length,
+                  itemBuilder: (context, index) {
+                    return _buildComplaintCard(complaints[index]);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -100,7 +144,6 @@ class _ComplaintManagementPageState extends State<ComplaintManagementPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Image Placeholder Container
           Container(
             height: 140,
             width: double.infinity,
