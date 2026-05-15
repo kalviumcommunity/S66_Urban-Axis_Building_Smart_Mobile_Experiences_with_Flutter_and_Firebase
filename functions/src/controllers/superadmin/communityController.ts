@@ -1,11 +1,11 @@
 import { Response } from "express";
-import { db, COLLECTIONS, Timestamp } from "@config/firebase";
-import { AuthenticatedRequest } from "@models/types";
+import { db, COLLECTIONS, Timestamp } from "../../config/firebase";
+import { AuthenticatedRequest } from "../../models/types";
 import {
   sendSuccess, sendServerError, sendValidationError, sendNotFound,
-} from "@utils/response";
-import { validate, communityUpdateSchema } from "@utils/validation";
-import { writeAuditLog, AUDIT_ACTIONS } from "@utils/auditLog";
+} from "../../utils/response";
+import { validate, communityUpdateSchema } from "../../utils/validation";
+import { writeAuditLog, AUDIT_ACTIONS } from "../../utils/auditLog";
 
 // ── GET /api/v1/superadmin/community ──────────
 

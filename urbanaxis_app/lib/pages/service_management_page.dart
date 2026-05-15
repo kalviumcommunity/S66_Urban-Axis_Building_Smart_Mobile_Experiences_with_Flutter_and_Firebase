@@ -9,6 +9,7 @@ class ServiceManagementPage extends StatefulWidget {
   State<ServiceManagementPage> createState() => _ServiceManagementPageState();
 }
 
+class _ServiceManagementPageState extends State<ServiceManagementPage> {
   String _selectedFilter = 'All Services';
   Future<List<Map<String, dynamic>>>? _servicesFuture;
 

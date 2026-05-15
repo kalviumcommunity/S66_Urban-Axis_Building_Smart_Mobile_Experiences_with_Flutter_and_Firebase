@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-
 import '../api_service.dart';
 
-class DocumentManagementPage extends StatelessWidget {
+class DocumentManagementPage extends StatefulWidget {
   const DocumentManagementPage({super.key});
 
+  @override
+  State<DocumentManagementPage> createState() => _DocumentManagementPageState();
+}
+
+class _DocumentManagementPageState extends State<DocumentManagementPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(

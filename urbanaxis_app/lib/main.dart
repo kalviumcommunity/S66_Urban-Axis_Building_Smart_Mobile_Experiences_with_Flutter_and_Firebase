@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'pages/login_page.dart';
@@ -9,6 +12,19 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Connect to emulators in debug mode
+  if (kDebugMode) {
+    try {
+      const String host = '127.0.0.1';
+      await FirebaseAuth.instance.useAuthEmulator(host, 9099);
+      FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+      print('🛠️ Connected to local Firebase emulators');
+    } catch (e) {
+      print('❌ Failed to connect to emulators: $e');
+    }
+  }
+
   runApp(const UrbanAxisApp());
 }
 

@@ -3,9 +3,14 @@ import '../theme/app_theme.dart';
 import '../main.dart' as import_main;
 import '../api_service.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
   Future<Map<String, dynamic>> _fetchSettingsData() async {
     final profile = await ApiService.getData('/api/v1/superadmin/profile');
     final prefs = await ApiService.getData('/api/v1/superadmin/preferences');

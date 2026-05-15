@@ -9,6 +9,7 @@ class ResidentManagementPage extends StatefulWidget {
   State<ResidentManagementPage> createState() => _ResidentManagementPageState();
 }
 
+class _ResidentManagementPageState extends State<ResidentManagementPage> {
   String _selectedFilter = 'All Residents';
   Future<List<Map<String, dynamic>>>? _residentsFuture;
 

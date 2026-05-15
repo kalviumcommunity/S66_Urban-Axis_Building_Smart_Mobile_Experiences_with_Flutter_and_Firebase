@@ -4,22 +4,44 @@
  *
  * Usage:
  *   npx ts-node scripts/seed.ts
- *
- * Requires: Firebase Admin SDK service account key at ./serviceAccountKey.json
  */
 
 import * as admin from "firebase-admin";
 import * as bcrypt from "bcryptjs";
-import { readFileSync } from "fs";
+import * as dotenv from "dotenv";
 import * as path from "path";
 
-const serviceAccount = JSON.parse(
-  readFileSync(path.resolve(__dirname, "../serviceAccountKey.json"), "utf8")
-);
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+const projectId = process.env.PROJECT_ID || "urbanaxis-app";
+
+// Check if we are running against emulators
+const isEmulator = process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST;
+
+if (isEmulator) {
+  console.log("🛠️  Connecting to Emulators...");
+  // When using emulators, we can initialize with just the projectId
+  // The Admin SDK will look for FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST
+  admin.initializeApp({
+    projectId: projectId,
+  });
+} else {
+  // Try to use environment variables for real Firebase project
+  if (process.env.CLIENT_EMAIL && process.env.PRIVATE_KEY) {
+    console.log("Using credentials from .env for Project: " + projectId);
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: projectId,
+        clientEmail: process.env.CLIENT_EMAIL,
+        privateKey: process.env.PRIVATE_KEY.replace(/\\n/g, "\n"),
+      }),
+    });
+  } else {
+    console.error("❌  Error: Missing credentials in .env (PROJECT_ID, CLIENT_EMAIL, PRIVATE_KEY)");
+    process.exit(1);
+  }
+}
 
 const db = admin.firestore();
 const auth = admin.auth();
@@ -58,13 +80,21 @@ async function seed() {
   // ──────────────────────────────────────────────
   //  2. Create SuperAdmin
   // ──────────────────────────────────────────────
-  const superadminPhone = "+919123456789"; // Change to actual phone number
-  const superadminPassword = "Admin@1234";   // Change before deploying
+  const superadminPhone = "+919123456789"; 
+  const superadminPassword = "Admin@1234";   
 
-  const firebaseUser = await auth.createUser({
-    phoneNumber: superadminPhone,
-    displayName: "Super Admin",
-  });
+  // Check if user already exists
+  let firebaseUser;
+  try {
+    firebaseUser = await auth.getUserByPhoneNumber(superadminPhone);
+    console.log(`ℹ️  SuperAdmin user already exists: ${firebaseUser.uid}`);
+  } catch (err) {
+    firebaseUser = await auth.createUser({
+      phoneNumber: superadminPhone,
+      displayName: "Super Admin",
+    });
+    console.log(`✅  SuperAdmin auth user created: ${firebaseUser.uid}`);
+  }
 
   const passwordHash = await bcrypt.hash(superadminPassword, 10);
 
@@ -79,12 +109,13 @@ async function seed() {
     updatedAt: now,
   });
 
+  // For the emulator, custom claims are handled locally
   await auth.setCustomUserClaims(firebaseUser.uid, {
     role: "superadmin",
     communityId,
   });
 
-  console.log(`✅  SuperAdmin created: ${firebaseUser.uid}`);
+  console.log(`✅  SuperAdmin document created.`);
   console.log(`    Phone   : ${superadminPhone}`);
   console.log(`    Password: ${superadminPassword}`);
   console.log(`    Community ID: ${communityId}`);
