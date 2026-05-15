@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../main.dart' as import_main;
+import '../api_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
+
+  Future<Map<String, dynamic>> _fetchSettingsData() async {
+    final profile = await ApiService.getData('/api/v1/superadmin/profile');
+    final prefs = await ApiService.getData('/api/v1/superadmin/preferences');
+    return {
+      'profile': Map<String, dynamic>.from(profile ?? {}),
+      'prefs': Map<String, dynamic>.from(prefs ?? {}),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -11,62 +21,78 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Settings', style: TextStyle(fontSize: 18)),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AppTheme.primaryColor,
-                    child: Text('SA', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _fetchSettingsData(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final profile = snapshot.data!['profile'] ?? {};
+          final prefs = snapshot.data!['prefs'] ?? {};
+          final emailOrPhone = profile['email'] ?? profile['phone'] ?? 'admin@urbanaxis.com';
+
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(24),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 36,
+                        backgroundColor: AppTheme.primaryColor,
+                        child: Text('SA', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(profile['name'] ?? 'Super Admin', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(emailOrPhone, style: const TextStyle(color: AppTheme.textSecondaryColor)),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(profile['status'] ?? 'verified', style: const TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                            )
+                          ],
+                        ),
+                      ),
+                      IconButton(icon: const Icon(Icons.edit, color: AppTheme.primaryColor), onPressed: () {}),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Super Admin', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        const Text('admin@urbanaxis.com', style: TextStyle(color: AppTheme.textSecondaryColor)),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text('verified', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
-                        )
-                      ],
-                    ),
-                  ),
-                  IconButton(icon: const Icon(Icons.edit, color: AppTheme.primaryColor), onPressed: () {}),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+                _buildSettingsSection('System Preferences', [
+                  _buildSettingsTile(Icons.language, 'Language', prefs['language'] ?? 'English (US)'),
+                  _buildThemeToggleTile(context),
+                  _buildSettingsTile(Icons.notifications_active_outlined, 'Push Notifications', (prefs['pushNotifications'] ?? true) ? 'Enabled' : 'Disabled', hasToggle: true),
+                ]),
+                _buildSettingsSection('Security', [
+                  _buildSettingsTile(Icons.lock_outline, 'Change Password', 'Last changed 3 months ago'),
+                  _buildSettingsTile(Icons.security, 'Two-Factor Auth', (prefs['twoFactorAuth'] ?? true) ? 'Enabled' : 'Disabled'),
+                  _buildSettingsTile(Icons.devices, 'Active Sessions', (prefs['activeSessions']?.toString() ?? '2 Devices')),
+                ]),
+                _buildSettingsSection('Support & More', [
+                  _buildSettingsTile(Icons.help_outline, 'Help Center', ''),
+                  _buildSettingsTile(Icons.info_outline, 'About UrbanAxis', 'Version 1.2.0'),
+                  _buildSettingsTile(Icons.logout, 'Log Out', '', isDestructive: true),
+                ]),
+                const SizedBox(height: 32),
+              ],
             ),
-            const SizedBox(height: 16),
-            _buildSettingsSection('System Preferences', [
-              _buildSettingsTile(Icons.language, 'Language', 'English (US)'),
-              _buildThemeToggleTile(context),
-              _buildSettingsTile(Icons.notifications_active_outlined, 'Push Notifications', 'Enabled', hasToggle: true),
-            ]),
-            _buildSettingsSection('Security', [
-              _buildSettingsTile(Icons.lock_outline, 'Change Password', 'Last changed 3 months ago'),
-              _buildSettingsTile(Icons.security, 'Two-Factor Auth', 'Enabled'),
-              _buildSettingsTile(Icons.devices, 'Active Sessions', '2 Devices'),
-            ]),
-            _buildSettingsSection('Support & More', [
-              _buildSettingsTile(Icons.help_outline, 'Help Center', ''),
-              _buildSettingsTile(Icons.info_outline, 'About UrbanAxis', 'Version 1.2.0'),
-              _buildSettingsTile(Icons.logout, 'Log Out', '', isDestructive: true),
-            ]),
-            const SizedBox(height: 32),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

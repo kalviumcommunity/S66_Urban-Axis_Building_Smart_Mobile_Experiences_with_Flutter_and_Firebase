@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../api_service.dart';
 
 class BillingPage extends StatefulWidget {
   const BillingPage({super.key});
@@ -9,36 +10,64 @@ class BillingPage extends StatefulWidget {
 }
 
 class _BillingPageState extends State<BillingPage> {
-  final List<Map<String, dynamic>> _invoices = [
-    {
-      'id': 'INV-2023-081',
-      'title': 'Monthly Maintenance',
-      'date': 'Oct 01, 2023',
-      'amount': '\$4,250.00',
-      'status': 'Paid',
-    },
-    {
-      'id': 'INV-2023-082',
-      'title': 'Elevator Annual AMC',
-      'date': 'Oct 15, 2023',
-      'amount': '\$1,100.00',
-      'status': 'Pending',
-    },
-    {
-      'id': 'INV-2023-083',
-      'title': 'Water Supply Bill',
-      'date': 'Oct 18, 2023',
-      'amount': '\$850.00',
-      'status': 'Overdue',
-    },
-    {
-      'id': 'INV-2023-084',
-      'title': 'Landscaping Services',
-      'date': 'Oct 20, 2023',
-      'amount': '\$600.00',
-      'status': 'Paid',
-    },
-  ];
+  Future<Map<String, dynamic>>? _billingFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _billingFuture = _fetchBillingData();
+  }
+
+  Future<Map<String, dynamic>> _fetchBillingData() async {
+    final invoicesData = await ApiService.getData('/api/v1/superadmin/invoices');
+    final summaryData = await ApiService.getData('/api/v1/superadmin/billing-summary');
+    final rawInvoices = List<Map<String, dynamic>>.from(invoicesData['invoices'] ?? []);
+    final invoices = rawInvoices.map((inv) {
+      return {
+        'id': inv['id'] ?? 'INV',
+        'title': inv['title'] ?? 'Invoice',
+        'date': _formatDate(inv['createdAt']),
+        'amount': _formatAmount(inv['amount']),
+        'status': _formatStatus(inv['status']),
+      };
+    }).toList();
+    return {
+      'invoices': invoices,
+      'summary': Map<String, dynamic>.from(summaryData ?? {}),
+    };
+  }
+
+  String _formatDate(dynamic createdAt) {
+    final dt = _parseTimestamp(createdAt);
+    if (dt == null) return 'Unknown date';
+    return '${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}/${dt.year}';
+  }
+
+  String _formatAmount(dynamic amount) {
+    if (amount == null) return '-';
+    if (amount is num) return '\$${amount.toStringAsFixed(2)}';
+    return amount.toString();
+  }
+
+  String _formatStatus(dynamic status) {
+    final raw = (status ?? '').toString().toLowerCase();
+    if (raw == 'paid') return 'Paid';
+    if (raw == 'pending') return 'Pending';
+    if (raw == 'overdue') return 'Overdue';
+    return 'Pending';
+  }
+
+  DateTime? _parseTimestamp(dynamic ts) {
+    if (ts == null) return null;
+    if (ts is String) return DateTime.tryParse(ts);
+    if (ts is Map) {
+      final seconds = ts['_seconds'] ?? ts['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,48 +75,62 @@ class _BillingPageState extends State<BillingPage> {
       appBar: AppBar(
         title: const Text('Billing & Invoices', style: TextStyle(fontSize: 18)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _billingFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final invoices = List<Map<String, dynamic>>.from(snapshot.data!['invoices'] ?? []);
+          final summary = snapshot.data!['summary'] ?? {};
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _buildSummaryCard('Total Collected', '\$12,450', Icons.account_balance_wallet, Colors.green),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildSummaryCard('Total Collected', _formatAmount(summary['totalCollected']), Icons.account_balance_wallet, Colors.green),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildSummaryCard('Pending Dues', _formatAmount(summary['pendingDues']), Icons.pending_actions, Colors.orange),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildSummaryCard('Pending Dues', '\$1,950', Icons.pending_actions, Colors.orange),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Recent Invoices', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    OutlinedButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Create'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: invoices.length,
+                  itemBuilder: (context, index) {
+                    return _buildInvoiceCard(invoices[index]);
+                  },
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Recent Invoices', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Create'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _invoices.length,
-              itemBuilder: (context, index) {
-                return _buildInvoiceCard(_invoices[index]);
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

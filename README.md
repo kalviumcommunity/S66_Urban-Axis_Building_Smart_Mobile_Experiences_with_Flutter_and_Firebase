@@ -2,6 +2,8 @@
 
 A multi-tenant SaaS platform for managing residential community facilities — gyms, pools, halls, parking, and more.
 
+> **Note:** For complete system architecture, API reference, and setup guides, see [DOCUMENTATION.md](./docs/DOCUMENTATION.md).
+
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=flat&logo=flutter&logoColor=white)
 ![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=flat&logo=firebase&logoColor=black)
 ![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?style=flat&logo=google-cloud&logoColor=white)

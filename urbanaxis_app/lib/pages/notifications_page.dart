@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../api_service.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -10,36 +11,65 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   String _selectedGroup = 'All Residents';
+  Future<List<Map<String, dynamic>>>? _notificationsFuture;
 
-  final List<Map<String, dynamic>> _history = [
-    {
-      'title': 'Elevator Maintenance - Block C',
-      'message': 'Elevator A in Block C will be undergoing routine maintenance from 2 PM to 4 PM.',
-      'target': 'All Residents',
-      'time': '2m ago',
-      'delivered': '340 Delivered',
-      'icon': Icons.elevator,
-      'color': AppTheme.primaryColor,
-    },
-    {
-      'title': 'Emergency Security Update',
-      'message': 'Attention all staff: New security protocols for main gate access are now in effect...',
-      'target': 'Admins Only',
-      'time': 'Yesterday',
-      'delivered': '24 Delivered',
-      'icon': Icons.security,
-      'color': Colors.orange,
-    },
-    {
-      'title': 'Holiday Greeting',
-      'message': 'UrbanAxis wishes all our residents a joyful holiday season and a prosperous New Year!',
-      'target': 'All Residents',
-      'time': '2 days ago',
-      'delivered': '450 Delivered',
-      'icon': Icons.celebration,
-      'color': Colors.green,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _notificationsFuture = _fetchNotifications();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchNotifications() async {
+    final data = await ApiService.getData('/api/v1/superadmin/notifications');
+    final notifications = List<Map<String, dynamic>>.from(data['notifications'] ?? []);
+    return notifications.map((n) {
+      final target = _formatTarget(n['targetType']);
+      return {
+        'title': n['title'] ?? 'Notification',
+        'message': n['message'] ?? '',
+        'target': target,
+        'time': _formatTime(n['createdAt']),
+        'delivered': 'Delivered',
+        'icon': _targetIcon(n['targetType']),
+        'color': AppTheme.primaryColor,
+      };
+    }).toList();
+  }
+
+  String _formatTarget(dynamic targetType) {
+    final raw = (targetType ?? '').toString().toLowerCase();
+    if (raw == 'all') return 'All Residents';
+    if (raw == 'block') return 'Block Residents';
+    if (raw == 'service') return 'Service Group';
+    return 'All Residents';
+  }
+
+  IconData _targetIcon(dynamic targetType) {
+    final raw = (targetType ?? '').toString().toLowerCase();
+    if (raw == 'block') return Icons.location_city;
+    if (raw == 'service') return Icons.design_services;
+    return Icons.campaign;
+  }
+
+  String _formatTime(dynamic createdAt) {
+    final dt = _parseTimestamp(createdAt);
+    if (dt == null) return 'Unknown';
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  DateTime? _parseTimestamp(dynamic ts) {
+    if (ts == null) return null;
+    if (ts is String) {
+      return DateTime.tryParse(ts);
+    }
+    if (ts is Map) {
+      final seconds = ts['_seconds'] ?? ts['seconds'];
+      if (seconds is int) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true).toLocal();
+      }
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,84 +77,97 @@ class _NotificationsPageState extends State<NotificationsPage> {
       appBar: AppBar(
         title: const Text('Notifications', style: TextStyle(fontSize: 18)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _notificationsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData) {
+            return const Center(child: Text('No data'));
+          }
+          final List<Map<String, dynamic>> history = snapshot.data!;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.campaign, color: AppTheme.primaryColor),
-                SizedBox(width: 8),
-                Text('Broadcast New Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Row(
+                  children: [
+                    Icon(Icons.campaign, color: AppTheme.primaryColor),
+                    SizedBox(width: 8),
+                    Text('Broadcast New Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text('Recipient Target Group', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: _buildGroupChip('All Residents')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildGroupChip('Admins')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildGroupChip('Maintenance')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Notification Title', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Scheduled Water Maintenance',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Message Content', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    hintText: 'Write your announcement details here...',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.send),
+                    label: const Text('Send Notification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Sent History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    TextButton(onPressed: () {}, child: const Text('View All >')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: history.length,
+                  itemBuilder: (context, index) {
+                    return _buildHistoryCard(history[index]);
+                  },
+                ),
               ],
             ),
-            const SizedBox(height: 24),
-            const Text('Recipient Target Group', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: _buildGroupChip('All Residents')),
-                const SizedBox(width: 8),
-                Expanded(child: _buildGroupChip('Admins')),
-                const SizedBox(width: 8),
-                Expanded(child: _buildGroupChip('Maintenance')),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('Notification Title', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'e.g. Scheduled Water Maintenance',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Message Content', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              maxLines: 4,
-              decoration: InputDecoration(
-                hintText: 'Write your announcement details here...',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.send),
-                label: const Text('Send Notification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Sent History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                TextButton(onPressed: () {}, child: const Text('View All >')),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _history.length,
-              itemBuilder: (context, index) {
-                return _buildHistoryCard(_history[index]);
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

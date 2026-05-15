@@ -1,0 +1,41 @@
+{
+  "project_info": {
+    "project_number": "123456789",
+    "project_id": "urbanaxis-app",
+    "storage_bucket": "urbanaxis-app.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789:android:demo-app-id",
+        "android_client_info": {
+          "package_name": "com.example.urbanaxisApp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "123456789-abc123.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDemo-apiKey-for-android"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 1
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
